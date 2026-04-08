@@ -57,15 +57,40 @@ def _looks_like_device_field(name: str) -> bool:
     return any(p.search(name) for p in DEVICE_ID_PATTERNS)
 
 
+# Pattern for base64url-encoded SHA-256 hashes (Samsung DUID format):
+# 43 chars from the base64url alphabet, no padding
+_BASE64URL_SHA256 = re.compile(r"^[A-Za-z0-9\-_]{43}$")
+
+# Other value patterns that look like device identifiers
+_DEVICE_VALUE_PATTERNS = [
+    _BASE64URL_SHA256,                                      # SHA-256 base64url (Samsung DUID)
+    re.compile(r"^[0-9a-f]{64}$", re.IGNORECASE),          # SHA-256 hex
+    re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"    # UUID
+               r"[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE),
+    re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"),   # MAC address
+]
+
+
+def _looks_like_device_value(value: Any) -> bool:
+    """Check if a value looks like a device identifier (hash, UUID, MAC, etc.)."""
+    if not isinstance(value, str) or len(value) < 12:
+        return False
+    return any(p.match(value) for p in _DEVICE_VALUE_PATTERNS)
+
+
 def _extract_json_fields(data: Any, prefix: str = "") -> dict[str, Any]:
-    """Recursively extract fields from JSON that look like device identifiers."""
+    """Recursively extract fields from JSON that look like device identifiers.
+
+    Matches on both field names (e.g. 'deviceId') AND field values
+    (e.g. a base64url SHA-256 hash like Samsung DUID).
+    """
     results = {}
     if isinstance(data, dict):
         for key, value in data.items():
             full_key = f"{prefix}.{key}" if prefix else key
             if isinstance(value, (dict, list)):
                 results.update(_extract_json_fields(value, full_key))
-            elif _looks_like_device_field(key):
+            elif _looks_like_device_field(key) or _looks_like_device_value(value):
                 results[full_key] = value
     elif isinstance(data, list):
         for i, item in enumerate(data):
