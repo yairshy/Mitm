@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "mitm-tv-sync"
+version = "0.1.0"
+description = "MITM proxy to sync TV app identity across multiple smart TVs"
+requires-python = ">=3.10"
+dependencies = [
+    "mitmproxy>=10.0.0",
+    "scapy>=2.5.0",
+    "click>=8.0.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+    "netifaces>=0.11.0",
+]
+
+[project.scripts]
+mitm-tv = "mitm_tv_sync.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mitm_tv_sync*"]

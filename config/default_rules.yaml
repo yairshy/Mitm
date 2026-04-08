@@ -1,0 +1,110 @@
+# Default rewrite rules for TV app fingerprint fields.
+# These are common fields that TV apps use for device identification.
+# Customize based on what you discover in the "learn" phase.
+
+# HTTP headers that commonly carry device identity
+headers:
+  # Standard headers
+  - name: "User-Agent"
+    enabled: true
+  # Common custom device ID headers
+  - name: "X-Device-Id"
+    enabled: true
+  - name: "X-Device-ID"
+    enabled: true
+  - name: "X-Device-Serial"
+    enabled: true
+  - name: "X-Device-Model"
+    enabled: true
+  - name: "X-Device-Name"
+    enabled: true
+  - name: "X-Client-Id"
+    enabled: true
+  - name: "X-Session-Id"
+    enabled: false   # sessions change frequently, usually not useful
+  - name: "X-App-Version"
+    enabled: true
+  - name: "X-Platform"
+    enabled: true
+  - name: "X-Device-Type"
+    enabled: true
+  - name: "X-Hardware-Id"
+    enabled: true
+  - name: "X-Advertising-Id"
+    enabled: true
+  - name: "X-Samsung-UID"
+    enabled: true
+  - name: "X-LG-Device-Id"
+    enabled: true
+
+# JSON body fields that commonly carry device identity
+# These are matched as keys in JSON request bodies
+body_fields:
+  - name: "deviceId"
+    enabled: true
+  - name: "device_id"
+    enabled: true
+  - name: "deviceID"
+    enabled: true
+  - name: "serialNumber"
+    enabled: true
+  - name: "serial_number"
+    enabled: true
+  - name: "macAddress"
+    enabled: true
+  - name: "mac_address"
+    enabled: true
+  - name: "hardwareId"
+    enabled: true
+  - name: "hardware_id"
+    enabled: true
+  - name: "udid"
+    enabled: true
+  - name: "uuid"
+    enabled: true
+  - name: "clientId"
+    enabled: true
+  - name: "client_id"
+    enabled: true
+  - name: "advertisingId"
+    enabled: true
+  - name: "deviceModel"
+    enabled: true
+  - name: "device_model"
+    enabled: true
+  - name: "deviceName"
+    enabled: true
+  - name: "device_name"
+    enabled: true
+  - name: "platformId"
+    enabled: true
+
+# URL query parameters that may carry device identity
+query_params:
+  - name: "device_id"
+    enabled: true
+  - name: "deviceId"
+    enabled: true
+  - name: "client_id"
+    enabled: true
+  - name: "serial"
+    enabled: true
+  - name: "mac"
+    enabled: true
+  - name: "hwid"
+    enabled: true
+
+# Domains to target (empty = all domains)
+# Fill these in after the "sniff" phase to focus on relevant API servers
+target_domains: []
+
+# Domains to ignore (common CDNs, analytics, etc. that aren't relevant)
+ignore_domains:
+  - "google.com"
+  - "googleapis.com"
+  - "gstatic.com"
+  - "facebook.com"
+  - "doubleclick.net"
+  - "googlesyndication.com"
+  - "crashlytics.com"
+  - "firebaseio.com"
