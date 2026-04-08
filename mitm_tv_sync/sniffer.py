@@ -49,6 +49,14 @@ DEVICE_ID_PATTERNS = [
     re.compile(r"\besn\b", re.IGNORECASE),
     re.compile(r"firmware.?ver", re.IGNORECASE),
     re.compile(r"model.?name", re.IGNORECASE),
+    # App-specific fields seen in TV app diagnostics
+    re.compile(r"device.?number", re.IGNORECASE),
+    re.compile(r"subscriber", re.IGNORECASE),
+    re.compile(r"ctap", re.IGNORECASE),
+    re.compile(r"profile.?id", re.IGNORECASE),
+    re.compile(r"app.?ver", re.IGNORECASE),
+    re.compile(r"os.?ver", re.IGNORECASE),
+    re.compile(r"platform.?type", re.IGNORECASE),
 ]
 
 

@@ -1,0 +1,142 @@
+# Rewrite rules for the Israeli TV app (identified from diagnostics screen).
+# This app uses a unified base64url SHA-256 device ID across platforms
+# (iPad, Samsung Tizen, LG WebOS) and sends device metadata including
+# model, firmware, OS, and a CTAP profile.
+
+# HTTP headers to capture and rewrite
+headers:
+  - name: "User-Agent"
+    enabled: true
+  - name: "X-Device-Id"
+    enabled: true
+  - name: "X-Device-ID"
+    enabled: true
+  - name: "X-Device-Number"
+    enabled: true
+  - name: "X-Device-Model"
+    enabled: true
+  - name: "X-Client-Id"
+    enabled: true
+  - name: "X-App-Version"
+    enabled: true
+  - name: "X-Platform"
+    enabled: true
+  - name: "X-Device-Type"
+    enabled: true
+  - name: "X-Firmware-Version"
+    enabled: true
+  - name: "X-OS-Version"
+    enabled: true
+  - name: "Authorization"
+    enabled: true
+  - name: "X-Subscriber-Id"
+    enabled: true
+  - name: "X-CTAP-Profile"
+    enabled: true
+
+# JSON body fields - these match the diagnostics screen fields
+body_fields:
+  # Device number (the primary identifier - base64url SHA-256)
+  - name: "deviceId"
+    enabled: true
+  - name: "device_id"
+    enabled: true
+  - name: "deviceID"
+    enabled: true
+  - name: "deviceNumber"
+    enabled: true
+  - name: "device_number"
+    enabled: true
+  # Subscriber / account binding
+  - name: "subscriberId"
+    enabled: true
+  - name: "subscriber_id"
+    enabled: true
+  - name: "subscriberNumber"
+    enabled: true
+  - name: "accountId"
+    enabled: true
+  - name: "account_id"
+    enabled: true
+  # CTAP profile
+  - name: "ctapProfile"
+    enabled: true
+  - name: "ctap_profile"
+    enabled: true
+  - name: "profileId"
+    enabled: true
+  - name: "profile_id"
+    enabled: true
+  # Device metadata
+  - name: "model"
+    enabled: true
+  - name: "modelName"
+    enabled: true
+  - name: "deviceModel"
+    enabled: true
+  - name: "firmwareVersion"
+    enabled: true
+  - name: "firmware_version"
+    enabled: true
+  - name: "osVersion"
+    enabled: true
+  - name: "os_version"
+    enabled: true
+  - name: "platform"
+    enabled: true
+  - name: "platformType"
+    enabled: true
+  - name: "appVersion"
+    enabled: true
+  - name: "app_version"
+    enabled: true
+  - name: "userAgent"
+    enabled: true
+  - name: "user_agent"
+    enabled: true
+  # Common auth fields
+  - name: "clientId"
+    enabled: true
+  - name: "client_id"
+    enabled: true
+  - name: "udid"
+    enabled: true
+  - name: "uuid"
+    enabled: true
+  - name: "macAddress"
+    enabled: true
+  - name: "mac_address"
+    enabled: true
+
+# URL query parameters
+query_params:
+  - name: "device_id"
+    enabled: true
+  - name: "deviceId"
+    enabled: true
+  - name: "deviceNumber"
+    enabled: true
+  - name: "subscriber_id"
+    enabled: true
+  - name: "client_id"
+    enabled: true
+
+# Domains to target - fill in after sniff/capture phase
+# Example: if the app uses api.partnertv.co.il or similar
+target_domains: []
+
+# Domains to ignore
+ignore_domains:
+  - "google.com"
+  - "googleapis.com"
+  - "gstatic.com"
+  - "facebook.com"
+  - "doubleclick.net"
+  - "googlesyndication.com"
+  - "crashlytics.com"
+  - "firebaseio.com"
+  - "googletagmanager.com"
+  - "google-analytics.com"
+  - "branch.io"
+  - "appsflyer.com"
+  - "adjust.com"
