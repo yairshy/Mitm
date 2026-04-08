@@ -34,7 +34,20 @@ headers:
     enabled: true
   - name: "X-Samsung-UID"
     enabled: true
+  - name: "X-Samsung-DUID"
+    enabled: true
   - name: "X-LG-Device-Id"
+    enabled: true
+  - name: "X-LG-UDID"
+    enabled: true
+  - name: "X-Device-Unique-Id"
+    enabled: true
+  - name: "X-Model-Name"
+    enabled: true
+  - name: "X-Firmware-Version"
+    enabled: true
+  # Authorization headers carry device-bound tokens after registration
+  - name: "Authorization"
     enabled: true
 
 # JSON body fields that commonly carry device identity
@@ -78,6 +91,32 @@ body_fields:
     enabled: true
   - name: "platformId"
     enabled: true
+  # Samsung-specific: DUID is the primary device identifier (hash of MAC)
+  - name: "duid"
+    enabled: true
+  - name: "DUID"
+    enabled: true
+  # LG-specific: LGUDID is the factory-assigned device identifier
+  - name: "lgudid"
+    enabled: true
+  - name: "LGUDID"
+    enabled: true
+  - name: "lgUdid"
+    enabled: true
+  # Electronic Serial Number (used by Netflix and similar apps)
+  - name: "esn"
+    enabled: true
+  - name: "ESN"
+    enabled: true
+  # Firmware/model info often sent during device registration
+  - name: "firmwareVersion"
+    enabled: true
+  - name: "firmware_version"
+    enabled: true
+  - name: "modelName"
+    enabled: true
+  - name: "model_name"
+    enabled: true
 
 # URL query parameters that may carry device identity
 query_params:
@@ -92,6 +131,12 @@ query_params:
   - name: "mac"
     enabled: true
   - name: "hwid"
+    enabled: true
+  - name: "duid"
+    enabled: true
+  - name: "lgudid"
+    enabled: true
+  - name: "esn"
     enabled: true
 
 # Domains to target (empty = all domains)

@@ -41,6 +41,14 @@ DEVICE_ID_PATTERNS = [
     re.compile(r"lg.?device", re.IGNORECASE),
     re.compile(r"tizen", re.IGNORECASE),
     re.compile(r"webos", re.IGNORECASE),
+    # Samsung DUID (Device Unique ID) - primary Samsung TV identifier (MAC hash)
+    re.compile(r"\bduid\b", re.IGNORECASE),
+    # LG LGUDID - factory-assigned LG TV identifier
+    re.compile(r"lgudid", re.IGNORECASE),
+    # ESN (Electronic Serial Number) - used by Netflix and similar apps
+    re.compile(r"\besn\b", re.IGNORECASE),
+    re.compile(r"firmware.?ver", re.IGNORECASE),
+    re.compile(r"model.?name", re.IGNORECASE),
 ]
 
 
@@ -134,6 +142,11 @@ class LearnAddon:
         ua = flow.request.headers.get("User-Agent", "")
         if ua:
             self.fingerprint.update_header("User-Agent", ua)
+
+        # Capture Authorization header (device-bound tokens from registration)
+        auth = flow.request.headers.get("Authorization", "")
+        if auth:
+            self.fingerprint.update_header("Authorization", auth)
 
         # Check query parameters
         parsed = urlparse(flow.request.url)
