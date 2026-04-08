@@ -804,6 +804,304 @@ def fp_delete(name: str):
 
 
 # ---------------------------------------------------------------------------
+# capture - Capture app handshake from iPad/other proxy-able device
+# ---------------------------------------------------------------------------
+
+@main.command()
+@click.option("--port", "-p", default=8080, help="Proxy port (default: 8080)")
+@click.option("--name", "-n", required=True, help='Capture name (e.g. "ipad-session")')
+@click.option("--capture-all", is_flag=True, help="Capture all requests (not just registration-like ones)")
+@click.option("--fingerprint", "-f", default=None, help="Also save a fingerprint with this name")
+def capture(port: int, name: str, capture_all: bool, fingerprint: Optional[str]):
+    """Capture the app's registration handshake from an iPad or other device.
+
+    This runs a regular (non-transparent) HTTP proxy. Point the iPad's WiFi
+    proxy settings to your MacBook's IP and this port. The proxy captures
+    the full request/response exchange, focusing on registration and login
+    flows where the device ID is sent.
+
+    NO ARP spoofing or root required - the iPad connects to the proxy voluntarily.
+
+    This is the recommended first step when the TV app has HTTPS cert pinning,
+    because iOS does NOT enforce cert pinning for third-party apps.
+
+    Example:
+      mitm-tv capture -n "ipad-session" -f "iPad"
+      # Then set iPad WiFi proxy to <mac-ip>:8080 and use the app
+    """
+    from .handshake import HandshakeCaptureAddon, HandshakeStore, TLSPassthroughAddon
+
+    handshake_addon = HandshakeCaptureAddon(
+        capture_all=capture_all,
+        on_capture=lambda h, s: console.print(
+            f"  [green]Captured[/green] {h.method} {h.url} "
+            f"(score: {s:.1f}, tags: {h.tags})"
+        ),
+    )
+    tls_addon = TLSPassthroughAddon(
+        on_pinning_detected=lambda d: console.print(
+            f"  [yellow]Cert pinning detected:[/yellow] {d} (passing through)"
+        ),
+    )
+
+    console.print(Panel("[bold]Handshake Capture Mode[/bold]"))
+    console.print(f"Proxy listening on: [cyan]0.0.0.0:{port}[/cyan]")
+    console.print()
+    console.print("[bold]Setup:[/bold]")
+    console.print(f"  1. On your iPad, go to WiFi settings")
+    console.print(f"  2. Set HTTP Proxy to Manual")
+    console.print(f"  3. Server: [cyan]<your-mac-ip>[/cyan]  Port: [cyan]{port}[/cyan]")
+    console.print(f"  4. Open the TV app on the iPad and use it normally")
+    console.print(f"  5. Press Ctrl+C when done")
+    console.print()
+    console.print(
+        "[dim]For HTTPS: visit http://mitm.it on the iPad to install the "
+        "mitmproxy CA cert[/dim]"
+    )
+    console.print()
+    console.print("[bold]Capturing... press Ctrl+C to stop[/bold]")
+    console.print()
+
+    try:
+        # Run as regular proxy (not transparent) since iPad is configured manually
+        _run_mitmproxy(port=port, addons=[handshake_addon, tls_addon], mode="regular")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Stopping...[/yellow]")
+
+    # Save captured handshakes
+    hs_store = HandshakeStore()
+    if handshake_addon.handshakes:
+        path = hs_store.save(name, handshake_addon.handshakes)
+        console.print()
+        console.print(Panel("[bold green]Handshake Capture Complete[/bold green]"))
+        console.print(f"Saved to: [cyan]{path}[/cyan]")
+        console.print(
+            f"Total requests: {handshake_addon.request_count}, "
+            f"Registration-like: {len(handshake_addon.handshakes)}"
+        )
+
+        # Show captured handshakes
+        table = Table(title="Captured Handshakes")
+        table.add_column("#", justify="right", style="dim")
+        table.add_column("Method", style="cyan")
+        table.add_column("URL", style="green", max_width=60)
+        table.add_column("Status", justify="right")
+        table.add_column("Tags", style="yellow")
+        for i, h in enumerate(handshake_addon.handshakes):
+            table.add_row(
+                str(i),
+                h.method,
+                h.url[:60],
+                str(h.status_code),
+                ", ".join(h.tags),
+            )
+        console.print(table)
+
+        # Also create a fingerprint if requested
+        if fingerprint:
+            from .sniffer import LearnAddon, _extract_json_fields
+            from .config import load_rules
+
+            fp_obj = DeviceFingerprint(
+                device_name=fingerprint,
+                ip_address="ipad-capture",
+            )
+
+            # Extract identity fields from all captured handshakes
+            for h in handshake_addon.handshakes:
+                # Headers
+                for hdr_name, hdr_val in h.request_headers.items():
+                    lower = hdr_name.lower()
+                    if any(k in lower for k in (
+                        "device", "client", "auth", "user-agent",
+                        "samsung", "lg", "x-"
+                    )):
+                        fp_obj.update_header(hdr_name, hdr_val)
+
+                # Body fields
+                req_json = h.get_request_json()
+                if req_json and isinstance(req_json, dict):
+                    fields = _extract_json_fields(req_json)
+                    for field_name, value in fields.items():
+                        fp_obj.update_body_field(field_name, value)
+
+                # Response tokens
+                resp_json = h.get_response_json()
+                if resp_json and isinstance(resp_json, dict):
+                    for key in ("token", "access_token", "accessToken",
+                                "auth_token", "authToken", "sessionId"):
+                        if key in resp_json:
+                            fp_obj.update_header("Authorization",
+                                                 f"Bearer {resp_json[key]}")
+
+                fp_obj.add_domain(h.host)
+
+            fp_store = FingerprintStore()
+            fp_path = fp_store.save(fp_obj)
+            console.print(f"\nFingerprint saved as: [cyan]{fingerprint}[/cyan] at {fp_path}")
+
+        # Report cert pinning
+        if tls_addon.pinned_domains:
+            console.print()
+            console.print("[yellow]Cert-pinned domains (could not intercept):[/yellow]")
+            for d in sorted(tls_addon.pinned_domains):
+                console.print(f"  [red]{d}[/red]")
+
+        if tls_addon.intercepted_domains:
+            console.print()
+            console.print("[green]Successfully intercepted domains:[/green]")
+            for d in sorted(tls_addon.intercepted_domains):
+                console.print(f"  [green]{d}[/green]")
+
+    else:
+        console.print()
+        console.print("[yellow]No registration-like requests captured.[/yellow]")
+        console.print(
+            "Try --capture-all to see everything, or make sure the app "
+            "performed a login/registration."
+        )
+
+    # Save full capture too
+    if handshake_addon.all_flows:
+        full_path = hs_store.save(f"{name}_full", handshake_addon.all_flows)
+        console.print(f"\nFull capture ({len(handshake_addon.all_flows)} requests): {full_path}")
+
+    console.print()
+    console.print("[bold]Next steps:[/bold]")
+    console.print(
+        f'  mitm-tv replay -n "{name}" --show   '
+        "[dim]# Review the captured handshake[/dim]"
+    )
+    if fingerprint:
+        console.print(
+            f'  mitm-tv clone --target <TV2_IP> --source "{fingerprint}"  '
+            "[dim]# Clone identity onto TV2[/dim]"
+        )
+
+
+# ---------------------------------------------------------------------------
+# replay - Replay a captured registration request
+# ---------------------------------------------------------------------------
+
+@main.command()
+@click.option("--name", "-n", required=True, help="Name of the captured handshake")
+@click.option("--show", is_flag=True, help="Just show the captured handshake (don't replay)")
+@click.option("--index", default=0, help="Which captured request to replay (default: 0)")
+@click.option("--device-id", "-d", default=None, help="Override the device ID in the request")
+@click.option("--device-id-field", default="deviceId", help="JSON field name for device ID")
+@click.option("--dry-run", is_flag=True, help="Show what would be sent without sending")
+def replay(name: str, show: bool, index: int, device_id: Optional[str],
+           device_id_field: str, dry_run: bool):
+    """Replay a captured registration handshake to the app server.
+
+    Use this to re-register a device with the same identity, or to register
+    a new device using a captured device ID.
+
+    Example:
+      mitm-tv replay -n "ipad-session" --show          # Review what was captured
+      mitm-tv replay -n "ipad-session" --dry-run       # See what would be sent
+      mitm-tv replay -n "ipad-session"                  # Actually replay it
+      mitm-tv replay -n "ipad-session" -d "new-id"      # Replay with different device ID
+    """
+    from .handshake import HandshakeStore, replay_registration
+
+    hs_store = HandshakeStore()
+    try:
+        handshakes = hs_store.load(name)
+    except FileNotFoundError:
+        console.print(f"[red]Capture '{name}' not found.[/red]")
+        available = hs_store.list_captures()
+        if available:
+            console.print("Available captures:")
+            for n in available:
+                console.print(f"  - {n}")
+        return
+
+    if show:
+        console.print(Panel(f"[bold]Captured Handshake: {name}[/bold]"))
+        for i, h in enumerate(handshakes):
+            console.print(f"\n[bold]--- Request #{i} ---[/bold]")
+            console.print(f"[cyan]{h.method} {h.url}[/cyan]")
+            console.print(f"Status: {h.status_code}")
+            console.print(f"Tags: {', '.join(h.tags) or 'none'}")
+            console.print(f"Captured: {h.captured_at}")
+
+            if h.request_headers:
+                console.print("\n[dim]Request Headers:[/dim]")
+                for k, v in h.request_headers.items():
+                    console.print(f"  {k}: {v[:100]}")
+
+            if h.request_body:
+                console.print("\n[dim]Request Body:[/dim]")
+                try:
+                    pretty = json.dumps(json.loads(h.request_body), indent=2)
+                    console.print(pretty[:2000])
+                except (json.JSONDecodeError, TypeError):
+                    console.print(h.request_body[:2000])
+
+            if h.response_body:
+                console.print(f"\n[dim]Response ({h.status_code}):[/dim]")
+                try:
+                    pretty = json.dumps(json.loads(h.response_body), indent=2)
+                    console.print(pretty[:2000])
+                except (json.JSONDecodeError, TypeError):
+                    console.print(h.response_body[:2000])
+        return
+
+    # Replay
+    if index >= len(handshakes):
+        console.print(f"[red]Index {index} out of range (0-{len(handshakes)-1})[/red]")
+        return
+
+    h = handshakes[index]
+    console.print(Panel("[bold]Replay Registration[/bold]"))
+    console.print(f"Target: [cyan]{h.method} {h.url}[/cyan]")
+
+    if device_id:
+        console.print(f"Override device ID field '{device_id_field}': [yellow]{device_id}[/yellow]")
+
+    if dry_run:
+        console.print("\n[yellow]DRY RUN - showing what would be sent:[/yellow]")
+        body = h.request_body or ""
+        if device_id and body:
+            try:
+                body_json = json.loads(body)
+                if isinstance(body_json, dict):
+                    for variant in (device_id_field, "deviceId", "device_id", "deviceID"):
+                        if variant in body_json:
+                            body_json[variant] = device_id
+                    body = json.dumps(body_json, indent=2)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        console.print(f"\n{h.method} {h.url}")
+        for k, v in h.request_headers.items():
+            console.print(f"  {k}: {v[:100]}")
+        console.print(f"\n{body[:2000]}")
+        return
+
+    console.print("\n[dim]Sending...[/dim]")
+    result = replay_registration(
+        handshake=h,
+        new_device_id=device_id,
+        device_id_field=device_id_field,
+    )
+
+    console.print(f"\nStatus: [{'green' if result['status_code'] == 200 else 'red'}]"
+                  f"{result['status_code']}[/]")
+
+    if result.get("error"):
+        console.print(f"Error: [red]{result['error']}[/red]")
+
+    if result["body"]:
+        console.print("\n[dim]Response:[/dim]")
+        try:
+            pretty = json.dumps(json.loads(result["body"]), indent=2)
+            console.print(pretty[:3000])
+        except (json.JSONDecodeError, TypeError):
+            console.print(result["body"][:3000])
+
+
+# ---------------------------------------------------------------------------
 # network info helper
 # ---------------------------------------------------------------------------
 

@@ -117,18 +117,88 @@ You can also pass custom rules directly:
 sudo mitm-tv learn --target 192.168.1.100 --name "Samsung TV" --rules my_rules.yaml
 ```
 
-## HTTPS and Certificate Pinning
+## HTTPS Strategy
 
-Most TV app traffic is HTTPS. The proxy can intercept HTTPS if the TV accepts the mitmproxy CA certificate (installed automatically in `~/.mitmproxy/`).
+Most TV app traffic is HTTPS. There are three strategies depending on whether the app uses certificate pinning:
 
-**Smart TVs with certificate pinning** will reject the proxy's certificate for HTTPS connections. In this case:
+### Strategy 1: Direct interception (no cert pinning)
 
-- HTTP traffic will still be interceptable
-- Use `mitm-tv sniff` to identify which connections fail (these are cert-pinned)
-- DNS spoofing (`mitm-tv dns`) can redirect traffic but won't bypass pinning
-- Some apps use a mix of pinned and unpinned connections
+Most third-party TV apps do NOT enforce cert pinning. The transparent proxy intercepts HTTPS by generating certificates signed by mitmproxy's CA. This works when:
+- The app doesn't pin certificates (most third-party apps)
+- You install the mitmproxy CA cert on the TV (Samsung dev mode / LG developer portal)
 
-If the app primarily uses pinned HTTPS, device identification may happen at the TLS or lower network layer, which requires a different approach.
+```bash
+sudo mitm-tv learn --target <TV_IP> --name "Samsung TV"
+```
+
+### Strategy 2: iPad-first capture (recommended for HTTPS apps)
+
+Since you likely have the same app on an iPad/iPhone, and iOS does NOT enforce cert pinning for third-party apps, use the iPad as your capture device:
+
+```bash
+# 1. Start the capture proxy (no sudo needed)
+mitm-tv capture -n "ipad-session" -f "iPad"
+
+# 2. On iPad: WiFi Settings → HTTP Proxy → Manual
+#    Server: <mac-ip>  Port: 8080
+
+# 3. On iPad: visit http://mitm.it to install mitmproxy CA cert
+#    (Settings → General → VPN & Device Mgmt → install the profile)
+
+# 4. Use the app on the iPad - the proxy captures the registration handshake
+
+# 5. Ctrl+C when done. Review what was captured:
+mitm-tv replay -n "ipad-session" --show
+
+# 6. Clone the captured identity onto TV2:
+sudo mitm-tv clone --target <TV2_IP> --source "iPad"
+```
+
+This captures the FULL registration flow (request + response), including:
+- The device ID sent to the server
+- Any tokens returned by the server
+- All headers the app sends
+
+### Strategy 3: Registration replay (cert pinning on TV)
+
+If the TV's HTTPS is cert-pinned and you can't intercept it at all, you can **replay** the registration request directly from your MacBook:
+
+```bash
+# 1. Capture the registration from iPad first (Strategy 2)
+mitm-tv capture -n "ipad-session"
+
+# 2. Review the captured registration request
+mitm-tv replay -n "ipad-session" --show
+
+# 3. Replay it to re-register with TV1's device ID
+mitm-tv replay -n "ipad-session" --dry-run
+
+# 4. Or replay with a different device ID
+mitm-tv replay -n "ipad-session" -d "<tv2-device-id>"
+```
+
+### Strategy 4: Manual fingerprint (you already know the device ID)
+
+If you already have the device ID (e.g. from the iPad app, dev tools, or logs):
+
+```bash
+mitm-tv fp create -n "iPad" -d "-VUHXoGHr45MABV8Up0evXcA..."
+sudo mitm-tv clone --target <TV2_IP> --source "iPad"
+```
+
+### How the app handshake typically works
+
+```
+App Boot → POST /device/register
+           Body: { "deviceId": "...", "model": "...", "platform": "..." }
+                          ↓
+           Server: { "token": "...", "accountId": "..." }
+                          ↓
+All subsequent requests use: Authorization: Bearer <token>
+```
+
+The critical moment is the registration POST. If we can capture that from the iPad
+and replay it (or rewrite TV2's version of it), we control the device identity.
 
 ## No-ARP Mode
 
@@ -162,6 +232,7 @@ mitm_tv_sync/
 ├── proxy.py             # mitmproxy addon for request rewriting
 ├── dns_spoof.py         # DNS-based interception alternative
 ├── fingerprint.py       # Device fingerprint storage
+├── handshake.py         # Registration capture and replay
 ├── config.py            # Configuration management
 └── utils.py             # Network utilities
 config/
