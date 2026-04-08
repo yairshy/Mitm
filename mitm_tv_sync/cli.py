@@ -618,6 +618,159 @@ def fp_show(name: str):
         console.print(table)
 
 
+@fp.command("create")
+@click.option("--name", "-n", required=True, help='Device name (e.g. "iPad")')
+@click.option("--device-id", "-d", required=True, help="The app's device ID value")
+@click.option(
+    "--field", "-f", multiple=True,
+    help='Additional field as name=value (e.g. -f "User-Agent=MyApp/1.0" -f "modelName=iPad")',
+)
+@click.option("--ip", default="manual", help="Source device IP (default: 'manual')")
+def fp_create(name: str, device_id: str, field: tuple, ip: str):
+    """Manually create a fingerprint from a known device ID.
+
+    Use this when you already know the device ID (e.g. from an iPad, browser
+    dev tools, or another device you can inspect). Skips the learn phase entirely.
+
+    The device ID is stored in common field names so it gets matched during
+    cloning regardless of what the app calls it.
+
+    Examples:
+      mitm-tv fp create -n "iPad" -d "-VUHXoGHr45MABV8Up0evXcA..."
+      mitm-tv fp create -n "iPad" -d "abc123" -f "User-Agent=MyApp/2.0 iPad"
+    """
+    fingerprint = DeviceFingerprint(
+        device_name=name,
+        ip_address=ip,
+    )
+
+    # Store the device ID under all common field names so it matches
+    # whatever the app actually sends
+    fingerprint.update_body_field("deviceId", device_id)
+    fingerprint.update_body_field("device_id", device_id)
+    fingerprint.update_body_field("deviceID", device_id)
+    fingerprint.update_header("X-Device-Id", device_id)
+    fingerprint.update_header("X-Device-ID", device_id)
+
+    # Parse additional fields
+    for f in field:
+        if "=" not in f:
+            console.print(f"[red]Invalid field format '{f}', use name=value[/red]")
+            continue
+        fname, fvalue = f.split("=", 1)
+        # Guess if it's a header (has - or uppercase start) or body field
+        if "-" in fname or fname[0].isupper():
+            fingerprint.update_header(fname, fvalue)
+        else:
+            fingerprint.update_body_field(fname, fvalue)
+
+    store = FingerprintStore()
+    path = store.save(fingerprint)
+
+    console.print(Panel("[bold green]Fingerprint Created[/bold green]"))
+    console.print(f"Name: [cyan]{name}[/cyan]")
+    console.print(f"Device ID: [yellow]{device_id}[/yellow]")
+    console.print(f"Saved to: {path}")
+
+    if fingerprint.headers:
+        table = Table(title="Headers")
+        table.add_column("Name", style="cyan")
+        table.add_column("Value", style="green")
+        for h, v in fingerprint.headers.items():
+            table.add_row(h, v[:80])
+        console.print(table)
+
+    if fingerprint.body_fields:
+        table = Table(title="Body Fields")
+        table.add_column("Field", style="cyan")
+        table.add_column("Value", style="green")
+        for f, v in fingerprint.body_fields.items():
+            table.add_row(f, str(v)[:80])
+        console.print(table)
+
+    console.print()
+    console.print("[bold]Next steps:[/bold]")
+    console.print(
+        f'  mitm-tv clone --target <TV2_IP> --source "{name}"  '
+        "[dim]# Clone this identity onto TV2[/dim]"
+    )
+    console.print(
+        f'  mitm-tv fp show "{name}"  '
+        "[dim]# Review the fingerprint[/dim]"
+    )
+    console.print(
+        f'  mitm-tv fp edit "{name}"  '
+        "[dim]# Add more fields if needed[/dim]"
+    )
+
+
+@fp.command("edit")
+@click.argument("name")
+@click.option("--set-header", "-H", multiple=True, help="Set header: name=value")
+@click.option("--set-field", "-F", multiple=True, help="Set body field: name=value")
+@click.option("--set-param", "-P", multiple=True, help="Set query param: name=value")
+@click.option("--set-domain", "-D", multiple=True, help="Add an observed domain")
+@click.option("--set-device-id", help="Update the device ID across all common fields")
+def fp_edit(
+    name: str,
+    set_header: tuple,
+    set_field: tuple,
+    set_param: tuple,
+    set_domain: tuple,
+    set_device_id: Optional[str],
+):
+    """Edit an existing fingerprint by adding or updating fields.
+
+    Examples:
+      mitm-tv fp edit "iPad" -H "User-Agent=NewAgent" -F "modelName=iPad Pro"
+      mitm-tv fp edit "iPad" --set-device-id "newDeviceIdValue"
+    """
+    store = FingerprintStore()
+    try:
+        fingerprint = store.load(name)
+    except FileNotFoundError:
+        console.print(f"[red]Fingerprint '{name}' not found.[/red]")
+        return
+
+    changes = 0
+
+    if set_device_id:
+        for field_name in ("deviceId", "device_id", "deviceID"):
+            fingerprint.update_body_field(field_name, set_device_id)
+        for header_name in ("X-Device-Id", "X-Device-ID"):
+            fingerprint.update_header(header_name, set_device_id)
+        changes += 1
+
+    for h in set_header:
+        if "=" in h:
+            hname, hval = h.split("=", 1)
+            fingerprint.update_header(hname, hval)
+            changes += 1
+
+    for f in set_field:
+        if "=" in f:
+            fname, fval = f.split("=", 1)
+            fingerprint.update_body_field(fname, fval)
+            changes += 1
+
+    for p in set_param:
+        if "=" in p:
+            pname, pval = p.split("=", 1)
+            fingerprint.update_query_param(pname, pval)
+            changes += 1
+
+    for d in set_domain:
+        fingerprint.add_domain(d)
+        changes += 1
+
+    if changes:
+        path = store.save(fingerprint)
+        console.print(f"[green]Updated {changes} field(s) in '{name}'[/green]")
+        console.print(f"Saved to: {path}")
+    else:
+        console.print("[yellow]No changes specified[/yellow]")
+
+
 @fp.command("export")
 @click.argument("name")
 @click.option("--output", "-o", default=None, help="Output file (default: stdout)")
